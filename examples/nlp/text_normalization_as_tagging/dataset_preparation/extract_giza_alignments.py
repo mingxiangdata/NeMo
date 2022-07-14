@@ -57,7 +57,7 @@ def fill_alignment_matrix(
      [0, 2, 2, 3]]
     """
     if fline2 is None or gline2 is None or fline3 is None or gline3 is None:
-        raise ValueError(f"empty params")
+        raise ValueError("empty params")
     srctokens = gline2.split()
     dsttokens = fline2.split()
     pattern = r"([^ ]+) \(\{ ([^\(\{\}\)]*) \}\)"
@@ -155,22 +155,22 @@ def get_targets(matrix: np.ndarray, dsttokens: List[str]) -> List[str]:
                 and np.all(matrix[i, :] == 0)  # if the whole line does not have safe points
                 and np.all(matrix[:, j] == 0)  # and the whole column does not have safe points, match them
             ):
-                if len(targets) == 0:  # if this is first safe point, attach left unaligned columns to it, if any
-                    for k in range(0, j):
+                if not targets:  # if this is first safe point, attach left unaligned columns to it, if any
+                    for k in range(j):
                         if np.all(matrix[:, k] == 0):  # if column k does not have safe points
                             dstlist.append(dsttokens[k])
                         else:
                             break
                 dstlist.append(dsttokens[j])
                 last_covered_dst_id = j
-                for k in range(j + 1, len(dsttokens)):
+                for k in range(last_covered_dst_id + 1, len(dsttokens)):
                     if np.all(matrix[:, k] == 0):  # if column k does not have safe points
                         dstlist.append(dsttokens[k])
                         last_covered_dst_id = k
                     else:
                         break
 
-        if len(dstlist) > 0:
+        if dstlist:
             if args.mode == "tn":
                 targets.append("_".join(dstlist))
             else:
@@ -210,7 +210,7 @@ def get_targets_from_back(matrix: np.ndarray, dsttokens: List[str]) -> List[str]
             if matrix[i][j] == 3 or (
                 j == last_covered_dst_id - 1 and np.all(matrix[i, :] == 0) and np.all(matrix[:, j] == 0)
             ):
-                if len(targets) == 0:
+                if not targets:
                     for k in range(len(dsttokens) - 1, j, -1):
                         if np.all(matrix[:, k] == 0):
                             dstlist.append(dsttokens[k])
@@ -218,13 +218,13 @@ def get_targets_from_back(matrix: np.ndarray, dsttokens: List[str]) -> List[str]
                             break
                 dstlist.append(dsttokens[j])
                 last_covered_dst_id = j
-                for k in range(j - 1, -1, -1):
+                for k in range(last_covered_dst_id - 1, -1, -1):
                     if np.all(matrix[:, k] == 0):
                         dstlist.append(dsttokens[k])
                         last_covered_dst_id = k
                     else:
                         break
-        if len(dstlist) > 0:
+        if dstlist:
             if args.mode == "tn":
                 targets.append("_".join(list(reversed(dstlist))))
             else:

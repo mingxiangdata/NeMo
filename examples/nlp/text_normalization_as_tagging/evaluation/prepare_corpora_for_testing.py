@@ -48,7 +48,7 @@ def process_file(
     reference_words = []  # size may be different
     semiotic_info = []
     raw_lines = []
-    sent_ok = True if args.sampling_count == -1 else False
+    sent_ok = args.sampling_count == -1
     with open(inputname, "r", encoding="utf-8") as f:
         for line in f:
             if line.startswith("<eos>"):
@@ -61,7 +61,7 @@ def process_file(
                 reference_words = []
                 semiotic_info = []
                 raw_lines = []
-                sent_ok = True if args.sampling_count == -1 else False
+                sent_ok = args.sampling_count == -1
             else:
                 raw_lines.append(line.strip())
                 cls, written, spoken = line.strip().split("\t")
@@ -139,12 +139,11 @@ def main() -> None:
                 reference_vcb[k] = {}
             reference_vcb[k][written] = int(freq)
     sampling_vcb = Counter()
-    out = open(args.output_file, "w", encoding="utf-8")
-    out_raw = open(args.output_file + ".raw", "w", encoding="utf-8")
-    input_paths = sorted([os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir)])
-    for inputname in input_paths:
-        process_file(inputname, out, out_raw, reference_vcb, sampling_vcb)
-    out.close()
+    with open(args.output_file, "w", encoding="utf-8") as out:
+        out_raw = open(f"{args.output_file}.raw", "w", encoding="utf-8")
+        input_paths = sorted([os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir)])
+        for inputname in input_paths:
+            process_file(inputname, out, out_raw, reference_vcb, sampling_vcb)
     out_raw.close()
 
 
