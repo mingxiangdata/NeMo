@@ -46,6 +46,7 @@ The script outputs the following metrics:
 """
 
 
+
 import re
 from argparse import ArgumentParser
 
@@ -71,7 +72,7 @@ if __name__ == "__main__":
             multi_references = []
             parts = line.strip().split("\t")
             if len(parts) < 2 or len(parts) > 3:
-                raise ValueError("Bad format: " + line)
+                raise ValueError(f"Bad format: {line}")
             words = parts[0].split()
             inputs.append(words)
             if len(parts) == 3:  # there are non-trivial semiotic spans
@@ -106,7 +107,7 @@ if __name__ == "__main__":
                     multi_references_updated = []
                     input_position = end
                 for i in range(len(multi_references)):  # copy needed words from the input end
-                    multi_references[i] += " " + " ".join(inputs[-1][input_position : len(inputs[-1])])
+                    multi_references[i] += " " + " ".join(inputs[-1][input_position:])
             # the last reference added is the actual one
             multi_references.append(parts[1])
             references.append(multi_references)
@@ -123,7 +124,7 @@ if __name__ == "__main__":
                 predicted_tags.append([])
                 continue
             if len(parts) != 5:
-                raise ValueError("Bad format: " + line)
+                raise ValueError(f"Bad format: {line}")
             prediction, inp_str, tag_str, tags_with_swap_str, semiotic = parts
             predictions.append(prediction.casefold())
             tags = tag_str.split(" ")

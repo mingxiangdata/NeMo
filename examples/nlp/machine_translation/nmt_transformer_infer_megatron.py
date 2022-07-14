@@ -22,6 +22,7 @@ USAGE Example:
 """
 
 
+
 import os
 
 from pytorch_lightning.trainer.trainer import Trainer
@@ -39,7 +40,7 @@ try:
     from apex.transformer.pipeline_parallel.utils import _reconfigure_microbatch_calculator
 
     HAVE_APEX = True
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     ModelType = ApexGuardDefaults()
     HAVE_APEX = False
 

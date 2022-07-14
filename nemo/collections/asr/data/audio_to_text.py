@@ -53,10 +53,8 @@ def _speech_collate_fn(batch, pad_id):
         _, audio_lengths, _, tokens_lengths = packed_batch
     else:
         raise ValueError("Expects 4 or 5 tensors in the batch!")
-    max_audio_len = 0
     has_audio = audio_lengths[0] is not None
-    if has_audio:
-        max_audio_len = max(audio_lengths).item()
+    max_audio_len = max(audio_lengths).item() if has_audio else 0
     max_tokens_len = max(tokens_lengths).item()
 
     audio_signal, tokens = [], []
@@ -86,9 +84,8 @@ def _speech_collate_fn(batch, pad_id):
     tokens_lengths = torch.stack(tokens_lengths)
     if sample_ids is None:
         return audio_signal, audio_lengths, tokens, tokens_lengths
-    else:
-        sample_ids = torch.tensor(sample_ids, dtype=torch.int32)
-        return audio_signal, audio_lengths, tokens, tokens_lengths, sample_ids
+    sample_ids = torch.tensor(sample_ids, dtype=torch.int32)
+    return audio_signal, audio_lengths, tokens, tokens_lengths, sample_ids
 
 
 class ASRManifestProcessor:
@@ -183,7 +180,9 @@ def expand_audio_filepaths(audio_tar_filepaths, shard_strategy: str, world_size:
 
     # Check for distributed and partition shards accordingly
     if world_size > 1:
-        if shard_strategy == 'scatter':
+        if shard_strategy == 'replicate':
+            logging.info("All tarred dataset shards will be replicated across all nodes.")
+        elif shard_strategy == 'scatter':
             logging.info("All tarred dataset shards will be scattered evenly across all nodes.")
 
             if len(audio_tar_filepaths) % world_size != 0:
@@ -199,8 +198,6 @@ def expand_audio_filepaths(audio_tar_filepaths, shard_strategy: str, world_size:
                 "Partitioning tarred dataset: process (%d) taking shards [%d, %d)", global_rank, begin_idx, end_idx
             )
 
-        elif shard_strategy == 'replicate':
-            logging.info("All tarred dataset shards will be replicated across all nodes.")
         else:
             raise ValueError(f"Invalid shard strategy ! Allowed values are : {valid_shard_strategies}")
 
@@ -294,12 +291,11 @@ class _AudioTextDataset(Dataset):
 
         t, tl = self.manifest_processor.process_text_by_sample(sample=sample)
 
-        if self.return_sample_id:
-            output = f, fl, torch.tensor(t).long(), torch.tensor(tl).long(), index
-        else:
-            output = f, fl, torch.tensor(t).long(), torch.tensor(tl).long()
-
-        return output
+        return (
+            (f, fl, torch.tensor(t).long(), torch.tensor(tl).long(), index)
+            if self.return_sample_id
+            else (f, fl, torch.tensor(t).long(), torch.tensor(tl).long())
+        )
 
     def __len__(self):
         return len(self.manifest_processor.collection)
@@ -466,22 +462,20 @@ class AudioToBPEDataset(_AudioTextDataset):
         else:
             eos_id = None
 
-        if hasattr(tokenizer, 'pad_token'):
-            pad_id = tokenizer.pad_id
-        else:
-            pad_id = 0
+        pad_id = tokenizer.pad_id if hasattr(tokenizer, 'pad_token') else 0
+
 
         class TokenizerWrapper:
             def __init__(self, tokenizer):
-                if isinstance(tokenizer, tokenizers.aggregate_tokenizer.AggregateTokenizer):
-                    self.is_aggregate = True
-                else:
-                    self.is_aggregate = False
+                self.is_aggregate = isinstance(
+                    tokenizer, tokenizers.aggregate_tokenizer.AggregateTokenizer
+                )
+
                 self._tokenizer = tokenizer
 
             def __call__(self, *args):
-                t = self._tokenizer.text_to_ids(*args)
-                return t
+                return self._tokenizer.text_to_ids(*args)
+
 
         super().__init__(
             manifest_filepath=manifest_filepath,
@@ -1005,22 +999,20 @@ class TarredAudioToBPEDataset(_TarredAudioToTextDataset):
         else:
             eos_id = None
 
-        if hasattr(tokenizer, 'pad_token'):
-            pad_id = tokenizer.pad_id
-        else:
-            pad_id = 0
+        pad_id = tokenizer.pad_id if hasattr(tokenizer, 'pad_token') else 0
+
 
         class TokenizerWrapper:
             def __init__(self, tokenizer):
-                if isinstance(tokenizer, tokenizers.aggregate_tokenizer.AggregateTokenizer):
-                    self.is_aggregate = True
-                else:
-                    self.is_aggregate = False
+                self.is_aggregate = isinstance(
+                    tokenizer, tokenizers.aggregate_tokenizer.AggregateTokenizer
+                )
+
                 self._tokenizer = tokenizer
 
             def __call__(self, *args):
-                t = self._tokenizer.text_to_ids(*args)
-                return t
+                return self._tokenizer.text_to_ids(*args)
+
 
         super().__init__(
             audio_tar_filepaths=audio_tar_filepaths,
@@ -1081,13 +1073,13 @@ class BucketingIterator:
 
     def __next__(self):
         batches = []
-        for idx in range(self.bucketing_batch_size):
+        for _ in range(self.bucketing_batch_size):
             try:
                 sample = next(self.wrapped_iter)
             except StopIteration:
                 break
             batches.append(sample)
-        if len(batches) == 0:
+        if not batches:
             raise StopIteration
         return batches
 
@@ -1102,5 +1094,4 @@ class RandomizedChainDataset(ChainDataset):
         for dataset_idx in shuffled_order:
             d = self.datasets[dataset_idx]
             assert isinstance(d, IterableDataset), "ChainDataset only supports IterableDataset"
-            for x in d:
-                yield x
+            yield from d

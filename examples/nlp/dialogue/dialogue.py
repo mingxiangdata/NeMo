@@ -67,7 +67,7 @@ def main(cfg: DictConfig) -> None:
 
     try:
         plugins = NLPDDPPlugin()
-    except (ImportError, ModuleNotFoundError):
+    except ImportError:
         plugins = None
 
     trainer = pl.Trainer(**cfg.trainer, plugins=plugins)

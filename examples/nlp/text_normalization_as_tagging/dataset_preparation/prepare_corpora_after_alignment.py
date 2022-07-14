@@ -93,12 +93,12 @@ def process_file_itn(inputname: str, out: TextIO, keys2replacements: Dict[str, s
                         same_from_begin + spoken_words + same_from_end, same_from_begin + replacements + same_from_end
                     ):
                         words.append(w)
-                        if cls == "LETTERS" or cls == "PLAIN":
-                            if w == r:
-                                tags.append("<SELF>")
-                            else:
-                                tags.append(r)
-                        elif w == r.replace("_", ""):
+                        if (
+                            cls in ["LETTERS", "PLAIN"]
+                            and w == r
+                            or cls not in ["LETTERS", "PLAIN"]
+                            and w == r.replace("_", "")
+                        ):
                             tags.append("<SELF>")
                         else:
                             tags.append(r)
@@ -125,7 +125,7 @@ def process_line(semiotic_class: str, line: str) -> Optional[Tuple[str, str, str
 
     src, dst, leftside_align, rightside_align = parts[2], parts[3], parts[4], parts[5]
     align = rightside_align
-    if semiotic_class == "letters" or semiotic_class == "plain":
+    if semiotic_class in {"letters", "plain"}:
         align = leftside_align
 
     return src, dst, align, freq
@@ -137,11 +137,11 @@ def get_replacement_vocab() -> None:
     """
 
     full_vocab = Counter()
-    alignment_files = glob.glob(args.giza_dir + "/*/" + args.alignment_filename)
+    alignment_files = glob.glob(f"{args.giza_dir}/*/{args.alignment_filename}")
     for fn in alignment_files:
         fn_parts = fn.split("/")
         if len(fn_parts) < 2:
-            raise ValueError("Bad filename: " + fn)
+            raise ValueError(f"Bad filename: {fn}")
         semiotic_class = fn_parts[-2]
         class_vocab = Counter()
         with open(fn, "r", encoding="utf-8") as f:
@@ -153,13 +153,13 @@ def get_replacement_vocab() -> None:
                 inputs = src.split(" ")
                 replacements = replacement.split(" ")
                 if len(inputs) != len(replacements):
-                    raise ValueError("Length mismatch in: " + line)
+                    raise ValueError(f"Length mismatch in: {line}")
                 for inp, rep in zip(inputs, replacements):
                     if inp == rep:  # skip same words
                         continue
                     full_vocab[rep] += freq
                     class_vocab[rep] += freq
-        with open(args.vocab_filename + "." + semiotic_class, "w", encoding="utf-8") as out:
+        with open(f"{args.vocab_filename}.{semiotic_class}", "w", encoding="utf-8") as out:
             for k, v in class_vocab.most_common(1000000000):
                 out.write(k + "\t" + str(v) + "\n")
 
@@ -183,26 +183,26 @@ def filter_by_vocab() -> None:
             k, v = line.strip().split("\t")
             vocab[k] = int(v)
     print("len(vocab)=", len(vocab))
-    alignment_files = glob.glob(args.giza_dir + "/*/" + args.alignment_filename)
+    alignment_files = glob.glob(f"{args.giza_dir}/*/{args.alignment_filename}")
     for fn in alignment_files:
         fn_parts = fn.split("/")
         if len(fn_parts) < 2:
-            raise ValueError("Bad filename: " + fn)
+            raise ValueError(f"Bad filename: {fn}")
         semiotic_class = fn_parts[-2]
-        out = open(args.giza_dir + "/" + semiotic_class + "/" + args.out_filename, "w", encoding="utf-8")
-        with open(fn, "r", encoding="utf-8") as f:
-            for line in f:
-                t = process_line(semiotic_class, line)
-                if t is None:
-                    continue
-                src, dst, replacement, freq = t
-                ok = True
-                for s, r in zip(src.split(" "), replacement.split(" ")):
-                    if s != r and r not in vocab:
-                        ok = False
-                if ok:
-                    out.write(semiotic_class + "\t" + src + "\t" + dst + "\t" + replacement + "\n")
-        out.close()
+        with open(f"{args.giza_dir}/{semiotic_class}/{args.out_filename}", "w", encoding="utf-8") as out:
+            with open(fn, "r", encoding="utf-8") as f:
+                for line in f:
+                    t = process_line(semiotic_class, line)
+                    if t is None:
+                        continue
+                    src, dst, replacement, freq = t
+                    ok = not any(
+                        s != r and r not in vocab
+                        for s, r in zip(src.split(" "), replacement.split(" "))
+                    )
+
+                    if ok:
+                        out.write(semiotic_class + "\t" + src + "\t" + dst + "\t" + replacement + "\n")
 
 
 def get_labeled_corpus() -> None:
@@ -217,9 +217,12 @@ def get_labeled_corpus() -> None:
         raise ValueError(f"Data dir {args.data_dir} does not exist")
 
     keys2replacements = {}
-    alignment_files = glob.glob(args.giza_dir + "/*/" + args.alignment_filename)
+    alignment_files = glob.glob(f"{args.giza_dir}/*/{args.alignment_filename}")
     if len(alignment_files) == 0:
-        raise ValueError("Did not found any such files: " + args.giza_dir + "/*/" + args.alignment_filename)
+        raise ValueError(
+            f"Did not found any such files: {args.giza_dir}/*/{args.alignment_filename}"
+        )
+
     for af in alignment_files:
         with open(af, "r", encoding="utf-8") as f:
             for line in f:
@@ -229,11 +232,10 @@ def get_labeled_corpus() -> None:
                     logging.warning("keys2replacements[key] != replacements", keys2replacements[key], replacements)
                 keys2replacements[key] = replacements
     print("size of phrase-to-replacements dictionary =", len(keys2replacements))
-    out = open(args.out_filename, "w", encoding="utf-8")
-    input_paths = sorted([os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir)])
-    for inputname in input_paths:
-        process_file_itn(inputname, out, keys2replacements)
-    out.close()
+    with open(args.out_filename, "w", encoding="utf-8") as out:
+        input_paths = sorted([os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir)])
+        for inputname in input_paths:
+            process_file_itn(inputname, out, keys2replacements)
 
 
 def main() -> None:
@@ -247,7 +249,7 @@ def main() -> None:
     elif args.mode == "get_labeled_corpus":
         get_labeled_corpus()
     else:
-        raise ValueError("unknown mode: " + args.mode)
+        raise ValueError(f"unknown mode: {args.mode}")
 
 
 if __name__ == "__main__":
